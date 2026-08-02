@@ -2,6 +2,12 @@
 emulate -L zsh
 typeset -gi TESTS_RUN=0 TESTS_FAILED=0
 
+# Every test file resolves the app via $REPO_ROOT. run_tests.sh exports it,
+# but default it from this file's own location so a single test file can also
+# be run directly: zsh tests/test_quote.zsh
+: ${REPO_ROOT:="${0:A:h:h}"}
+export REPO_ROOT
+
 # Isolate every filesystem effect from the real $HOME.
 sandbox() {
   SANDBOX=$(mktemp -d)
