@@ -8,9 +8,9 @@ Talk is cheap. Show me the code. — Linus Torvalds
 ~ $
 ```
 
-That's the whole thing. It runs on macOS and Linux, needs nothing installed beyond zsh, and is
-written so that a broken config, a missing file, or a dead network can never stop your shell from
-starting.
+That's the whole thing. Quotes live in one S3 bucket, every machine reads from it, and there is
+nothing to configure. It runs on macOS and Linux, needs nothing installed beyond zsh, and is written
+so that a dead network can never stop your shell from starting.
 
 ## Install
 
@@ -20,7 +20,8 @@ cd termi
 sh install.sh
 ```
 
-Open a new terminal and you'll see a quote.
+The first terminal you open downloads the quotes and prints nothing; every one after that prints a
+quote.
 
 The installer is POSIX sh rather than zsh on purpose: it's the thing that checks whether you have
 zsh, so it has to run on machines that don't. If zsh is missing it tells you how to get it and exits
@@ -31,12 +32,10 @@ What lands where:
 | Path | What |
 |---|---|
 | `~/.local/bin/termi` | The script |
-| `~/.local/share/termi/quotes.txt` | Your quotes |
-| `~/.config/termi/termi.conf` | Config, created once and never overwritten |
-| `~/.cache/termi/api-quotes.txt` | Downloaded quotes, when using a URL |
+| `~/.cache/termi/quotes.txt` | Last download from the bucket |
 
-`XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are respected if you set them. You don't need
-`~/.local/bin` on your `PATH` — the shell hook calls the script by absolute path.
+That's all of it — no config file, no local quote list. `XDG_CACHE_HOME` is respected if you set it.
+You don't need `~/.local/bin` on your `PATH` — the shell hook calls the script by absolute path.
 
 The hook itself goes into `~/.zshrc` and `~/.bashrc`, wrapped in markers so it can be removed
 cleanly:
@@ -51,64 +50,27 @@ cleanly:
 bash login shells behave — bash reads `~/.bash_profile` *instead of* `~/.profile` when it exists —
 and silently rearranging your login sequence isn't a reasonable price for a quote.
 
-## Adding your own quotes
+## Where the quotes come from
 
-One quote per line. The convention is `Quote — Author`, but nothing enforces it, so put whatever you
-like on a line.
-
-```sh
-sh install.sh --quotes my-quotes.txt
-```
-
-That merges rather than replaces: blank lines are dropped, duplicates are skipped, and existing
-order is kept. Safe to run repeatedly with the same file.
-
-Or just edit `~/.local/share/termi/quotes.txt` directly.
-
-## Configuration
-
-Everything is optional. `~/.config/termi/termi.conf` is zsh syntax and is sourced by the script, so
-it's shell, not INI.
-
-| Key | Default | What |
-|---|---|---|
-| `TERMI_SOURCE` | `file` | `file` or `api` |
-| `TERMI_API_URL` | empty | Plain-text URL, one quote per line |
-| `TERMI_CACHE_TTL` | `86400` | Seconds before downloaded quotes are refetched |
-| `TERMI_QUOTES_FILE` | `$XDG_DATA_HOME/termi/quotes.txt` | Where the quotes live |
-
-## Pulling quotes from a URL
-
-Point termi at any URL that returns plain text, one quote per line — the same format as
-`quotes.txt`. There's no JSON parsing, which means the file parser and the network parser are
-literally the same function.
+One URL, hardcoded at the top of `bin/termi`:
 
 ```sh
-TERMI_SOURCE=api
-TERMI_API_URL="https://example.com/quotes.txt"
+TERMI_URL="https://jl-termi-quotes-2026.s3.eu-west-2.amazonaws.com/quotes.txt"
 ```
 
-Your shell never waits on the network. termi prints from a local cache immediately, and if that
-cache is older than `TERMI_CACHE_TTL` it forks a disowned `curl` to refresh it for next time. So:
+It returns plain text, one quote per line. The convention is `Quote — Author`, but nothing enforces
+it. To use a different bucket, edit that line and run `sh install.sh` again.
 
-- The first terminal you open after switching to `api` prints from your local `quotes.txt`, because
-  the cache doesn't exist yet. Every terminal after that uses the downloaded list.
-- Quotes can be up to one TTL stale. That's the trade for never blocking startup.
+Every run fires a `curl` in the background to refresh the cache, and prints from the copy the
+previous run downloaded. Your shell never waits on the network. So:
+
+- Quotes are one terminal behind the bucket. That's the trade for never blocking startup.
 - A failed or empty download leaves the existing cache alone (it writes to a temp file and moves it
-  into place), so an endpoint that goes down means stale quotes, not broken quotes.
+  into place), so an endpoint that goes down means yesterday's quotes, not broken quotes.
 - If `curl` isn't installed, the refresh quietly does nothing.
+- A machine that has never managed a successful download prints nothing at all.
 
-To skip the first-run wait, prime the cache yourself:
-
-```sh
-mkdir -p ~/.cache/termi
-curl -fsSL "$TERMI_API_URL" > ~/.cache/termi/api-quotes.txt
-```
-
-The endpoint needs to return 200 with a non-empty body within 10 seconds. There's no support for
-auth headers, so anything private needs the credential in the URL.
-
-## Sharing one quote list across machines
+## Hosting the bucket
 
 An S3 object URL is already a single GET endpoint, so you don't need an API in front of it. Create a
 bucket, make just the one key public, and point every machine at it.
@@ -142,20 +104,22 @@ The policy grants read on `quotes.txt` alone, not `/*`, so nothing else you put 
 exposed. Set `--content-type` or S3 stores it as `binary/octet-stream`, which curl ignores but a
 browser will download instead of display; the `charset=utf-8` keeps em dashes intact.
 
-Your `TERMI_API_URL` is then `https://$BUCKET.s3.$REGION.amazonaws.com/quotes.txt`.
+Your `TERMI_URL` is then `https://$BUCKET.s3.$REGION.amazonaws.com/quotes.txt`.
 
 Two things worth knowing. That URL is genuinely public — anyone who has it can read the file and
 cost you requests and egress, so pick an unguessable bucket name and never put anything private in
-there. And if two machines read-append-write at the same moment, the later write wins outright;
-versioning gets the lost quote back, but nothing prevents the clash.
+there. And every terminal you open is a GET, so keep an eye on it if you live in tmux.
 
-To append from a machine, give it credentials scoped to that single key
-(`s3:GetObject` and `s3:PutObject` on `arn:aws:s3:::BUCKET/quotes.txt`) and then:
+## Adding a quote
+
+Quotes only exist in the bucket, so adding one means writing to the bucket. Give the machine
+credentials scoped to that single key (`s3:GetObject` and `s3:PutObject` on
+`arn:aws:s3:::BUCKET/quotes.txt`) and then:
 
 ```sh
 #!/bin/sh
 # addquote "Quote — Author"
-BUCKET=your-unique-bucket-name
+BUCKET=jl-termi-quotes-2026
 tmp=$(mktemp)
 aws s3 cp "s3://$BUCKET/quotes.txt" "$tmp" --quiet
 printf '%s\n' "$1" >> "$tmp"
@@ -165,8 +129,8 @@ aws s3 cp "$tmp.clean" "s3://$BUCKET/quotes.txt" \
 rm -f "$tmp" "$tmp.clean"
 ```
 
-That `awk` line is the same merge logic `install.sh --quotes` uses locally, so both routes behave
-identically.
+The `awk` line drops blanks and duplicates. If two machines read-append-write at the same moment the
+later write wins outright; versioning gets the lost quote back, but nothing prevents the clash.
 
 ## Uninstall
 
@@ -174,24 +138,26 @@ identically.
 sh install.sh --uninstall
 ```
 
-Removes the script and strips the marker blocks out of your rc files, leaving the rest of those
-files untouched. Your quotes and config stay put, so reinstalling picks up where you left off.
-Delete `~/.local/share/termi` and `~/.config/termi` by hand if you want them gone.
+Removes the script, strips the marker blocks out of your rc files, and deletes the cache. Nothing of
+yours is in there — the quotes are in the bucket — so it's a complete removal. It also clears the
+`~/.local/share/termi` and `~/.config/termi` directories that older versions used.
 
 ## How it works
 
-Roughly 70 lines of zsh. The interesting decisions:
+Roughly 50 lines of zsh. The interesting decisions:
 
-**It cannot break your shell.** Every failure path in `bin/termi` returns 0 without printing.
-Missing quotes file, unreadable cache, no curl, garbage config — you get no quote, not an error.
+**It cannot break your shell.** Every failure path in `bin/termi` returns 0 without printing. No
+cache, unreadable cache, no curl, dead bucket — you get no quote, not an error.
+
+**The fetch never blocks.** The refresh runs as a disowned background job with its output sent to
+`/dev/null`, so it neither delays your prompt nor holds open the stdout pipe of a `$(termi)`.
 
 **It checks for an interactive shell, not a tty.** The hooks test `[[ -o interactive ]]` in zsh and
 `case $- in *i*)` in bash. Testing for a tty would be wrong: scp and sftp sessions would still be
 safe, but the quote would vanish whenever output is piped, which also makes the thing untestable.
 
 **Portable across BSD and GNU userlands.** No `sed -i`, no `stat`, no `readlink -f` — those differ
-between macOS and Linux. Timestamps come from zsh's `zstat`, in-place edits go through awk plus
-`cat tmp > file`.
+between macOS and Linux.
 
 **Your rc files might be symlinks.** Common with dotfile repos. So termi appends with `>>` and
 rewrites with `cat "$tmp" > "$file"`, never `mv`, which would replace the symlink with a regular
@@ -208,9 +174,10 @@ tests/run_tests.sh            # everything
 zsh tests/test_quote.zsh      # one file
 ```
 
-69 checks across 7 files, no framework — each `test_*.zsh` runs in its own zsh process. Tests
-sandbox `$HOME` and fake the network with a `curl` shim on `PATH`, so they never touch your real
-home directory or make a request. `All tests passed` and exit 0 is the gate for any change.
+67 checks across 6 files, no framework — each `test_*.zsh` runs in its own zsh process. Tests
+sandbox `$HOME` and put a failing `curl` shim on `PATH` for every sandbox, so a test can never reach
+the real bucket even if it forgets to fake the network. `All tests passed` and exit 0 is the gate
+for any change.
 
 One thing the tests can't cover: whether a quote actually appears when a real terminal starts. After
 touching `install.sh` or the rc snippets, run `sh install.sh` on a real machine and open a new tab.
@@ -220,9 +187,9 @@ which is how the tests get at the internals.
 
 ## Not doing
 
-Deliberately out of scope: fish support, `--help`/`--version` on `termi` itself, JSON API parsing,
-quote categories or weighting, and Windows.
+Deliberately out of scope: local quote files, config of any kind, fish support, `--help`/`--version`
+on `termi` itself, JSON parsing, quote categories or weighting, and Windows.
 
 ## Requirements
 
-zsh for the app. bash or zsh as your interactive shell. curl only if you use a URL. macOS or Linux.
+zsh for the app. bash or zsh as your interactive shell. curl. macOS or Linux.

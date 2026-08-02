@@ -5,17 +5,18 @@ set -eu
 
 SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 BIN_DIR="$HOME/.local/bin"
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/termi"
-CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/termi"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/termi"
+# v1 kept quotes and a config file locally; both are gone, so uninstall clears them out.
+LEGACY_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/termi"
+LEGACY_CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/termi"
 MARK_START="# >>> termi >>>"
 MARK_END="# <<< termi <<<"
 
 usage() {
   cat <<'EOF'
-Usage: install.sh [--quotes FILE | --uninstall]
-  (no args)       install termi: script, starter quotes, config, shell hooks
-  --quotes FILE   merge quotes from FILE (one per line) into the installed set
-  --uninstall     remove the script and shell hooks (keeps quotes and config)
+Usage: install.sh [--uninstall]
+  (no args)       install termi: script and shell hooks
+  --uninstall     remove the script, shell hooks and cached quotes
 EOF
 }
 
@@ -75,40 +76,11 @@ remove_block() {  # rcfile — strip the marker block; cat-over preserves symlin
   rm -f "$tmp"
 }
 
-merge_quotes() {  # file — append new unique non-empty lines, keep order
-  src="$1"
-  if [ ! -f "$src" ]; then
-    die "quotes file not found: $src"
-  fi
-  mkdir -p "$DATA_DIR"
-  if [ ! -f "$DATA_DIR/quotes.txt" ]; then
-    : > "$DATA_DIR/quotes.txt"
-  fi
-  tmp=$(mktemp)
-  awk 'NF && !seen[$0]++' "$DATA_DIR/quotes.txt" "$src" > "$tmp"
-  cat "$tmp" > "$DATA_DIR/quotes.txt"
-  rm -f "$tmp"
-  printf 'Merged quotes from %s (%s total)\n' "$src" "$(wc -l < "$DATA_DIR/quotes.txt" | tr -d ' ')"
-}
-
 install_files() {
   require_zsh
-  mkdir -p "$BIN_DIR" "$DATA_DIR" "$CONF_DIR"
+  mkdir -p "$BIN_DIR"
   cp "$SELF_DIR/bin/termi" "$BIN_DIR/termi"
   chmod 755 "$BIN_DIR/termi"
-  if [ ! -f "$DATA_DIR/quotes.txt" ]; then
-    cp "$SELF_DIR/quotes.txt" "$DATA_DIR/quotes.txt"
-  fi
-  if [ ! -f "$CONF_DIR/termi.conf" ]; then
-    cat > "$CONF_DIR/termi.conf" <<'EOF'
-# termi configuration (zsh syntax; sourced by the termi script).
-# Uncomment to override the defaults.
-# TERMI_SOURCE=file          # file | api
-# TERMI_API_URL=""           # plain-text endpoint, one quote per line
-# TERMI_CACHE_TTL=86400      # seconds between API cache refreshes
-# TERMI_QUOTES_FILE="$XDG_DATA_HOME/termi/quotes.txt"
-EOF
-  fi
   append_block "$HOME/.zshrc" zsh_snippet
   append_block "$HOME/.bashrc" bash_snippet
   # Never CREATE .bash_profile: its existence makes bash login shells skip
@@ -116,7 +88,7 @@ EOF
   if [ -f "$HOME/.bash_profile" ]; then
     append_block "$HOME/.bash_profile" bash_snippet
   fi
-  printf 'termi installed. Open a new terminal to see it.\n'
+  printf 'termi installed. Open a new terminal twice: the first fetches the quotes, the second shows one.\n'
 }
 
 uninstall() {
@@ -124,13 +96,13 @@ uninstall() {
   remove_block "$HOME/.zshrc"
   remove_block "$HOME/.bashrc"
   remove_block "$HOME/.bash_profile"
-  printf 'termi removed. Quotes and config kept in %s and %s\n' "$DATA_DIR" "$CONF_DIR"
+  # Safe to delete outright: the quotes live in the bucket, nothing here is authored locally.
+  rm -rf "$CACHE_DIR" "$LEGACY_DATA_DIR" "$LEGACY_CONF_DIR"
+  printf 'termi removed.\n'
 }
 
 case "${1:-}" in
   "")          install_files ;;
-  --quotes)    if [ "$#" -ne 2 ]; then usage >&2; exit 2; fi
-               merge_quotes "$2" ;;
   --uninstall) uninstall ;;
   -h|--help)   usage ;;
   *)           usage >&2; exit 2 ;;

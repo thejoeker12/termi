@@ -1,37 +1,27 @@
 #!/usr/bin/env zsh
 source "${0:A:h}/helpers.zsh"
 
-# --- Merge dedupes, drops blanks, keeps first-seen order
-sandbox
-mkdir -p "$XDG_DATA_HOME/termi"
-print -l -- "alpha" "beta" > "$XDG_DATA_HOME/termi/quotes.txt"
-print -l -- "beta" "gamma" "" "alpha" "delta" > "$SANDBOX/new.txt"
-out=$(sh "$REPO_ROOT/install.sh" --quotes "$SANDBOX/new.txt"); st=$?
-assert_eq 0 "$st" "--quotes exits 0"
-assert_eq "$(print -l -- alpha beta gamma delta)" "$(cat "$XDG_DATA_HOME/termi/quotes.txt")" "merge dedupes and keeps order"
-
-# --- Merge works before any install (creates the data dir)
-sandbox
-print -l -- "solo" > "$SANDBOX/new.txt"
-sh "$REPO_ROOT/install.sh" --quotes "$SANDBOX/new.txt" > /dev/null
-assert_eq "solo" "$(cat "$XDG_DATA_HOME/termi/quotes.txt")" "merge bootstraps quotes file"
-
-# --- Missing merge file dies with exit 1
-out=$(sh "$REPO_ROOT/install.sh" --quotes "$SANDBOX/absent.txt" 2>&1); st=$?
-assert_eq 1 "$st" "missing merge file exits 1"
-assert_contains "$out" "not found" "missing merge file explains itself"
-
-# --- Uninstall removes script and hooks, keeps data and config, keeps other rc content
+# --- Uninstall removes script, hooks and cache, keeps other rc content
 sandbox
 print -r -- "# my prompt setup" > "$HOME/.zshrc"
+mkdir -p "$XDG_CACHE_HOME/termi"
+print -r -- "cached-quote" > "$XDG_CACHE_HOME/termi/quotes.txt"
 sh "$REPO_ROOT/install.sh" > /dev/null 2>&1
 sh "$REPO_ROOT/install.sh" --uninstall > /dev/null
 [[ -e "$HOME/.local/bin/termi" ]]; assert_eq 1 "$?" "script removed"
 assert_contains "$(cat "$HOME/.zshrc")" "# my prompt setup" "user rc content kept"
 assert_eq 0 "$(grep -cF '# >>> termi >>>' "$HOME/.zshrc")" "zshrc block removed"
 assert_eq 0 "$(grep -cF '# >>> termi >>>' "$HOME/.bashrc")" "bashrc block removed"
-assert_file_exists "$XDG_DATA_HOME/termi/quotes.txt" "quotes kept on uninstall"
-assert_file_exists "$XDG_CONFIG_HOME/termi/termi.conf" "config kept on uninstall"
+[[ -e "$XDG_CACHE_HOME/termi" ]]; assert_eq 1 "$?" "cache removed"
+
+# --- v1 left quotes and a config file behind; uninstall clears those too
+sandbox
+mkdir -p "$XDG_DATA_HOME/termi" "$XDG_CONFIG_HOME/termi"
+print -r -- "old-quote" > "$XDG_DATA_HOME/termi/quotes.txt"
+print -r -- "TERMI_SOURCE=file" > "$XDG_CONFIG_HOME/termi/termi.conf"
+sh "$REPO_ROOT/install.sh" --uninstall > /dev/null
+[[ -e "$XDG_DATA_HOME/termi" ]]; assert_eq 1 "$?" "legacy data dir removed"
+[[ -e "$XDG_CONFIG_HOME/termi" ]]; assert_eq 1 "$?" "legacy config dir removed"
 
 # --- Symlinked rc files survive install + uninstall (dotfile repos)
 sandbox
@@ -50,7 +40,12 @@ assert_contains "$(cat "$SANDBOX/dotfiles/zshrc")" "# dotfiles zshrc" "real file
 out=$(sh "$REPO_ROOT/install.sh" --bogus 2>&1); st=$?
 assert_eq 2 "$st" "unknown flag exits 2"
 assert_contains "$out" "Usage:" "unknown flag prints usage"
-out=$(sh "$REPO_ROOT/install.sh" --quotes 2>&1); st=$?
-assert_eq 2 "$st" "--quotes without file exits 2"
+out=$(sh "$REPO_ROOT/install.sh" --quotes q.txt 2>&1); st=$?
+assert_eq 2 "$st" "retired --quotes flag exits 2"
+
+# --- --help prints usage on stdout and exits 0
+out=$(sh "$REPO_ROOT/install.sh" --help); st=$?
+assert_eq 0 "$st" "--help exits 0"
+assert_contains "$out" "--uninstall" "--help documents uninstall"
 
 finish

@@ -7,10 +7,13 @@ out=$(sh "$REPO_ROOT/install.sh" 2>&1); st=$?
 assert_eq 0 "$st" "install exits 0"
 assert_file_exists "$HOME/.local/bin/termi" "script installed"
 [[ -x "$HOME/.local/bin/termi" ]]; assert_eq 0 "$?" "script is executable"
-assert_file_exists "$XDG_DATA_HOME/termi/quotes.txt" "starter quotes installed"
-assert_file_exists "$XDG_CONFIG_HOME/termi/termi.conf" "config seeded"
 assert_contains "$(cat "$HOME/.zshrc")" "# >>> termi >>>" "zshrc hook added"
 assert_contains "$(cat "$HOME/.bashrc")" "# >>> termi >>>" "bashrc hook added"
+
+# --- No local quote or config state is created any more
+[[ -e "$XDG_DATA_HOME/termi" ]]; assert_eq 1 "$?" "no data dir created"
+[[ -e "$XDG_CONFIG_HOME/termi" ]]; assert_eq 1 "$?" "no config dir created"
+assert_eq 0 "$(curl_calls)" "install makes no network call"
 
 # --- Never create .bash_profile
 [[ -e "$HOME/.bash_profile" ]]; assert_eq 1 "$?" "bash_profile not created"
@@ -26,19 +29,12 @@ touch "$HOME/.bash_profile"
 sh "$REPO_ROOT/install.sh" > /dev/null 2>&1
 assert_contains "$(cat "$HOME/.bash_profile")" "# >>> termi >>>" "existing bash_profile gets hook"
 
-# --- Existing user quotes are never overwritten
+# --- A cache from a previous install survives reinstalling
 sandbox
-mkdir -p "$XDG_DATA_HOME/termi"
-print -r -- "my-own-quote" > "$XDG_DATA_HOME/termi/quotes.txt"
+mkdir -p "$XDG_CACHE_HOME/termi"
+print -r -- "cached-quote" > "$XDG_CACHE_HOME/termi/quotes.txt"
 sh "$REPO_ROOT/install.sh" > /dev/null 2>&1
-assert_eq "my-own-quote" "$(cat "$XDG_DATA_HOME/termi/quotes.txt")" "existing quotes preserved"
-
-# --- Existing config is never overwritten
-sandbox
-mkdir -p "$XDG_CONFIG_HOME/termi"
-print -r -- "TERMI_SOURCE=api" > "$XDG_CONFIG_HOME/termi/termi.conf"
-sh "$REPO_ROOT/install.sh" > /dev/null 2>&1
-assert_eq "TERMI_SOURCE=api" "$(cat "$XDG_CONFIG_HOME/termi/termi.conf")" "existing config preserved"
+assert_eq "cached-quote" "$(cat "$XDG_CACHE_HOME/termi/quotes.txt")" "existing cache preserved"
 
 # --- Refuses without zsh: PATH of symlinked tools, minus zsh
 sandbox

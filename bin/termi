@@ -1,23 +1,14 @@
 #!/usr/bin/env zsh
-# termi — print a random quote when a new terminal opens.
+# termi — print a random quote from the shared bucket when a new terminal opens.
 # Sourcing this file loads functions without running main (see exec guard at bottom).
 emulate -L zsh
-zmodload zsh/stat zsh/datetime
+zmodload zsh/datetime
 
-: ${XDG_CONFIG_HOME:=$HOME/.config}
-: ${XDG_DATA_HOME:=$HOME/.local/share}
+# The one and only quote source. Point this somewhere else and reinstall to switch buckets.
+TERMI_URL="https://jl-termi-quotes-2026.s3.eu-west-2.amazonaws.com/quotes.txt"
+
 : ${XDG_CACHE_HOME:=$HOME/.cache}
-
-# Defaults — override in $XDG_CONFIG_HOME/termi/termi.conf (zsh syntax, sourced).
-TERMI_SOURCE=file                                    # file | api
-TERMI_API_URL=""                                     # plain text, one quote per line
-TERMI_CACHE_TTL=86400                                # seconds
-TERMI_QUOTES_FILE="$XDG_DATA_HOME/termi/quotes.txt"
-
-TERMI_CONF="$XDG_CONFIG_HOME/termi/termi.conf"
-[[ -r "$TERMI_CONF" ]] && source "$TERMI_CONF"
-
-TERMI_CACHE="$XDG_CACHE_HOME/termi/api-quotes.txt"
+TERMI_CACHE="$XDG_CACHE_HOME/termi/quotes.txt"
 
 # Print one random non-empty line from $1. Returns 1 if none available.
 termi_pick_random_line() {
@@ -31,22 +22,13 @@ termi_pick_random_line() {
   print -r -- "${lines[idx]}"
 }
 
-# 0 iff the cache exists, is non-empty, and is younger than TERMI_CACHE_TTL.
-termi_cache_fresh() {
-  [[ -s "$TERMI_CACHE" ]] || return 1
-  local -a mtime
-  zstat -A mtime +mtime -- "$TERMI_CACHE" 2>/dev/null || return 1
-  (( EPOCHSECONDS - mtime[1] < TERMI_CACHE_TTL ))
-}
-
-# Fetch the API into the cache. Atomic tmp+mv: a failed or empty download
+# Download the bucket into the cache. Atomic tmp+mv: a failed or empty download
 # never replaces a good cache. Intended to run disowned in the background.
 termi_refresh_cache() {
-  [[ -n "$TERMI_API_URL" ]] || return 0
   command -v curl >/dev/null 2>&1 || return 0
   mkdir -p -- "${TERMI_CACHE:h}"
   local tmp="$TERMI_CACHE.tmp.$$"
-  if curl -fsSL --max-time 10 "$TERMI_API_URL" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+  if curl -fsSL --max-time 10 "$TERMI_URL" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
     mv -f -- "$tmp" "$TERMI_CACHE"
   else
     rm -f -- "$tmp"
@@ -56,17 +38,11 @@ termi_refresh_cache() {
 termi_main() {
   # Two shells opened the same second must not print the same quote
   RANDOM=$(( $$ ^ EPOCHSECONDS ))
-  local src="$TERMI_QUOTES_FILE"
-  if [[ "$TERMI_SOURCE" == api ]]; then
-    [[ -s "$TERMI_CACHE" ]] && src="$TERMI_CACHE"
-    if ! termi_cache_fresh; then
-      # Disowned + all output to /dev/null: never blocks startup, and never
-      # holds open the stdout pipe of a $(termi) command substitution.
-      ( termi_refresh_cache ) > /dev/null 2>&1 &!
-    fi
-  fi
-  [[ -f "$src" && -r "$src" ]] || return 0   # never disturb shell startup
-  termi_pick_random_line "$src" || return 0
+  # Refresh on every run. Disowned + all output to /dev/null: never blocks startup,
+  # and never holds open the stdout pipe of a $(termi) command substitution.
+  ( termi_refresh_cache ) > /dev/null 2>&1 &!
+  # Prints what the last run downloaded; silent on a machine that has never fetched.
+  termi_pick_random_line "$TERMI_CACHE" || return 0
 }
 
 # Run only when executed; `source bin/termi` (tests) just loads functions.

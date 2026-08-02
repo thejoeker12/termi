@@ -2,9 +2,11 @@
 source "${0:A:h}/helpers.zsh"
 
 # Full user flow in a sandbox: install, then open interactive shells.
+# The sandbox curl shim fails, so the cache stays exactly as seeded here.
 sandbox
 sh "$REPO_ROOT/install.sh" > /dev/null 2>&1
-print -r -- "zen-quote-42" > "$XDG_DATA_HOME/termi/quotes.txt"   # single known quote
+mkdir -p "$XDG_CACHE_HOME/termi"
+print -r -- "zen-quote-42" > "$XDG_CACHE_HOME/termi/quotes.txt"   # single known quote
 
 out=$(zsh -ic 'exit' 2>/dev/null)
 assert_contains "$out" "zen-quote-42" "new interactive zsh prints a quote"
