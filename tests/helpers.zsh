@@ -50,3 +50,29 @@ finish() {
   print -r -- "  ($TESTS_RUN checks, $TESTS_FAILED failed)"
   (( TESTS_FAILED == 0 ))
 }
+
+# Replace curl with a fake that logs calls and emits a fixture.
+# Usage: make_curl_shim FIXTURE [EXITCODE]
+make_curl_shim() {
+  local fixture="$1" rc="${2:-0}"
+  SHIM_DIR="$SANDBOX/shim"
+  mkdir -p "$SHIM_DIR"
+  {
+    print -r -- '#!/bin/sh'
+    print -r -- "echo called >> '$SANDBOX/curl-calls.log'"
+    if (( rc == 0 )); then
+      print -r -- "cat '$fixture'"
+    fi
+    print -r -- "exit $rc"
+  } > "$SHIM_DIR/curl"
+  chmod 755 "$SHIM_DIR/curl"
+  export PATH="$SHIM_DIR:$PATH"
+}
+
+curl_calls() {  # number of times the shim was invoked
+  if [[ -f "$SANDBOX/curl-calls.log" ]]; then
+    wc -l < "$SANDBOX/curl-calls.log" | tr -d ' '
+  else
+    print 0
+  fi
+}
