@@ -3,6 +3,9 @@ source "${0:A:h}/helpers.zsh"
 sandbox
 source "$REPO_ROOT/bin/termi"   # loads functions only; main is exec-guarded
 
+assert_eq $'\e[32mhello\e[0m' "$(termi_green "hello")" "green wraps text in ANSI 32"
+assert_eq "hello" "$(termi_print_quote "hello")" "no escapes when stdout is not a tty"
+
 qf="$SANDBOX/q.txt"
 print -l -- "alpha" "beta" "gamma" > "$qf"
 

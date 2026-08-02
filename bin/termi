@@ -10,6 +10,20 @@ TERMI_URL="https://jl-termi-quotes-2026.s3.eu-west-2.amazonaws.com/quotes.txt"
 : ${XDG_CACHE_HOME:=$HOME/.cache}
 TERMI_CACHE="$XDG_CACHE_HOME/termi/quotes.txt"
 
+# ANSI green. Split out from the tty check so the colouring itself is testable.
+termi_green() { print -r -- $'\e[32m'"$1"$'\e[0m'; }
+
+# Colour only for a human at a terminal; a pipe or a file gets plain text, so
+# `termi | cat` and $(termi) stay clean. This is a display choice only — unlike
+# the rc snippets, which use [[ -o interactive ]] so the quote never vanishes.
+termi_print_quote() {
+  if [[ -t 1 ]]; then
+    termi_green "$1"
+  else
+    print -r -- "$1"
+  fi
+}
+
 # Print one random non-empty line from $1. Returns 1 if none available.
 termi_pick_random_line() {
   [[ -f "$1" && -r "$1" ]] || return 1
@@ -19,7 +33,7 @@ termi_pick_random_line() {
   (( $#lines > 0 )) || return 1
   # RANDOM is 15-bit; combine two draws so files >32767 lines stay reachable
   local idx=$(( ((RANDOM << 15) | RANDOM) % $#lines + 1 ))
-  print -r -- "${lines[idx]}"
+  termi_print_quote "${lines[idx]}"
 }
 
 # Download the bucket into the cache. Atomic tmp+mv: a failed or empty download

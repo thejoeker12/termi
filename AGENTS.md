@@ -15,21 +15,23 @@ itself, the bundled `quotes.txt`, and `install.sh --quotes`. `main` is the worki
 only branch.
 
 The suite is the gate for any change: `tests/run_tests.sh` must print `All tests passed` and exit 0.
-It is currently 67 checks across 6 files.
+It is currently 69 checks across 6 files.
 
 Deliberately out of scope — do not add without being asked: local quote files, config of any kind,
 fish support, `--help`/`--version` on `termi` itself, JSON parsing, quote categories or weighting,
 Windows.
 
-One thing tests cannot cover, so verify by hand after touching `install.sh` or the rc snippets: run
-`sh install.sh` on a real machine, open a new terminal tab, and confirm a quote prints before the
-prompt (the first tab after a fresh install is silent — it only populates the cache).
+Two things tests cannot cover, so verify by hand. After touching `install.sh` or the rc snippets:
+run `sh install.sh` on a real machine, open a new terminal tab, and confirm a quote prints before
+the prompt (the first tab after a fresh install is silent — it only populates the cache). After
+touching output formatting: the green branch only fires on a real tty, and every test captures
+output, so look at it in a terminal (or drive it through `zsh/zpty`).
 
 ## Layout
 
 | Path | Purpose |
 |---|---|
-| `bin/termi` | The app. zsh. All functions prefixed `termi_`. `TERMI_URL` at the top is the single quote source. Sourced-safe: `source bin/termi` loads functions without running `termi_main` (guarded by `zsh_eval_context`). |
+| `bin/termi` | The app. zsh. All functions prefixed `termi_`. `TERMI_URL` at the top is the single quote source. Quotes print in ANSI green (`termi_green` / `termi_print_quote`), plain when stdout is not a tty. Sourced-safe: `source bin/termi` loads functions without running `termi_main` (guarded by `zsh_eval_context`). |
 | `install.sh` | POSIX sh. Install / `--uninstall`. |
 | `README.md` | User-facing docs: install, where quotes come from, S3 hosting recipe, addquote script, uninstall. Keep in step with behaviour changes — it is the only doc a human reads. |
 | `tests/` | Plain zsh tests, no framework. `tests/run_tests.sh` runs each `test_*.zsh` in its own zsh process. |
@@ -86,7 +88,9 @@ yet prints nothing. The endpoint contract is plain text, one quote per line.
 - **Never break shell startup:** every `bin/termi` failure path exits 0 silently, and the fetch is
   always backgrounded and disowned.
 - **Interactive-only guard, no tty test:** snippets check `[[ -o interactive ]]` (zsh) / `case $- in
-  *i*)` (bash). This keeps scp/sftp safe and keeps `zsh -ic` testable through a pipe.
+  *i*)` (bash). This keeps scp/sftp safe and keeps `zsh -ic` testable through a pipe. The `[[ -t 1 ]]`
+  in `termi_print_quote` is not an exception to this — it decides *how* the quote is printed, never
+  *whether*. A pipe still gets the quote, just without the escape codes.
 - **`TERMI_RAN` guard in the bash snippet is deliberately not exported** — it dedupes
   `.bash_profile`-sources-`.bashrc` within one process while letting nested/tmux shells print.
 - **Tests:** sandboxed `$HOME` via `sandbox` in `tests/helpers.zsh`. Because the URL is hardcoded,

@@ -21,7 +21,7 @@ sh install.sh
 ```
 
 The first terminal you open downloads the quotes and prints nothing; every one after that prints a
-quote.
+quote in green.
 
 The installer is POSIX sh rather than zsh on purpose: it's the thing that checks whether you have
 zsh, so it has to run on machines that don't. If zsh is missing it tells you how to get it and exits
@@ -156,6 +156,11 @@ cache, unreadable cache, no curl, dead bucket — you get no quote, not an error
 `case $- in *i*)` in bash. Testing for a tty would be wrong: scp and sftp sessions would still be
 safe, but the quote would vanish whenever output is piped, which also makes the thing untestable.
 
+**The green is dropped when output isn't a terminal.** `termi | cat` and `$(termi)` give you the
+quote as plain text — the ANSI codes would only be noise there. This is the one place termi does
+test for a tty, and it decides how the quote is printed, never whether. The colour is the standard
+ANSI green rather than a fixed shade, so it follows whatever your terminal theme calls green.
+
 **Portable across BSD and GNU userlands.** No `sed -i`, no `stat`, no `readlink -f` — those differ
 between macOS and Linux.
 
@@ -174,7 +179,7 @@ tests/run_tests.sh            # everything
 zsh tests/test_quote.zsh      # one file
 ```
 
-67 checks across 6 files, no framework — each `test_*.zsh` runs in its own zsh process. Tests
+69 checks across 6 files, no framework — each `test_*.zsh` runs in its own zsh process. Tests
 sandbox `$HOME` and put a failing `curl` shim on `PATH` for every sandbox, so a test can never reach
 the real bucket even if it forgets to fake the network. `All tests passed` and exit 0 is the gate
 for any change.
