@@ -6,11 +6,11 @@
 
 ## Status
 
-v1 is complete and merged into `main` (PR #1, squash-merged as `feat: v1`). The whole plan shipped: quote engine, cached API source, installer with merge and uninstall, and 69 tests across 6 files. `main` is the working branch; `dev-v1` is merged and can be deleted.
+v1 is complete and merged into `main` (PR #1, squash-merged as `feat: v1`). The whole plan shipped: quote engine, cached API source, installer with merge and uninstall, and 69 checks across 7 test files. `main` is the working branch; `dev-v1` is merged and can be deleted.
 
 The suite is the gate for any change: `tests/run_tests.sh` must print `All tests passed` and exit 0.
 
-Deliberately out of scope — do not add without being asked: fish support, README, `--help`/`--version` on `termi` itself, JSON API parsing, quote categories or weighting, Windows.
+Deliberately out of scope — do not add without being asked: fish support, `--help`/`--version` on `termi` itself, JSON API parsing, quote categories or weighting, Windows.
 
 One thing tests cannot cover, so verify by hand after touching `install.sh` or the rc snippets: run `sh install.sh` on a real machine, open a new terminal tab, and confirm a quote prints before the prompt.
 
@@ -21,6 +21,7 @@ One thing tests cannot cover, so verify by hand after touching `install.sh` or t
 | `bin/termi` | The app. zsh. All functions prefixed `termi_`. Sourced-safe: `source bin/termi` loads functions without running `termi_main` (guarded by `zsh_eval_context`). |
 | `install.sh` | POSIX sh. Install / `--quotes FILE` merge / `--uninstall`. |
 | `quotes.txt` | Bundled starter quotes, one per line, `Quote — Author`. |
+| `README.md` | User-facing docs: install, config keys, API mode, S3 hosting recipe, uninstall. Keep in step with behaviour changes — it is the only doc a human reads. |
 | `tests/` | Plain zsh tests, no framework. `tests/run_tests.sh` runs each `test_*.zsh` in its own zsh process. |
 | `tests/helpers.zsh` | Sourced first by every test file. Provides `sandbox`, `assert_eq`, `assert_contains`, `assert_file_exists`, `finish`, `make_curl_shim`, `curl_calls`, and defaults `$REPO_ROOT`. |
 
