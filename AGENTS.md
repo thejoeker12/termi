@@ -6,7 +6,7 @@
 
 ## Status
 
-v1 is complete and merged into `main` (PR #1, squash-merged as `feat: v1`). The whole plan shipped: quote engine, cached API source, installer with merge and uninstall, and 69 checks across 7 test files. `main` is the working branch; `dev-v1` is merged and can be deleted.
+v1 is complete and merged into `main` (PR #1, squash-merged as `feat: v1`). The whole plan shipped: quote engine, cached API source, installer with merge and uninstall, and 69 checks across 7 test files. `main` is the working branch and the only branch — `dev-v1` was squash-merged and has been deleted.
 
 The suite is the gate for any change: `tests/run_tests.sh` must print `All tests passed` and exit 0.
 
