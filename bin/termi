@@ -1,0 +1,46 @@
+#!/usr/bin/env zsh
+# termi — print a random quote when a new terminal opens.
+# Sourcing this file loads functions without running main (see exec guard at bottom).
+emulate -L zsh
+zmodload zsh/stat zsh/datetime
+
+: ${XDG_CONFIG_HOME:=$HOME/.config}
+: ${XDG_DATA_HOME:=$HOME/.local/share}
+: ${XDG_CACHE_HOME:=$HOME/.cache}
+
+# Defaults — override in $XDG_CONFIG_HOME/termi/termi.conf (zsh syntax, sourced).
+TERMI_SOURCE=file                                    # file | api
+TERMI_API_URL=""                                     # plain text, one quote per line
+TERMI_CACHE_TTL=86400                                # seconds
+TERMI_QUOTES_FILE="$XDG_DATA_HOME/termi/quotes.txt"
+
+TERMI_CONF="$XDG_CONFIG_HOME/termi/termi.conf"
+[[ -r "$TERMI_CONF" ]] && source "$TERMI_CONF"
+
+TERMI_CACHE="$XDG_CACHE_HOME/termi/api-quotes.txt"
+
+# Print one random non-empty line from $1. Returns 1 if none available.
+termi_pick_random_line() {
+  [[ -f "$1" && -r "$1" ]] || return 1
+  local -a lines
+  # canonical zsh split-into-lines; unquoted expansion drops empty lines
+  lines=(${(f)"$(<$1)"})
+  (( $#lines > 0 )) || return 1
+  # RANDOM is 15-bit; combine two draws so files >32767 lines stay reachable
+  local idx=$(( ((RANDOM << 15) | RANDOM) % $#lines + 1 ))
+  print -r -- "${lines[idx]}"
+}
+
+termi_main() {
+  # Two shells opened the same second must not print the same quote
+  RANDOM=$(( $$ ^ EPOCHSECONDS ))
+  local src="$TERMI_QUOTES_FILE"
+  [[ -f "$src" && -r "$src" ]] || return 0   # never disturb shell startup
+  termi_pick_random_line "$src" || return 0
+}
+
+# Run only when executed; `source bin/termi` (tests) just loads functions.
+# Executed script => zsh_eval_context ends in "toplevel"; sourced => "file".
+if [[ "${zsh_eval_context[-1]}" != file ]]; then
+  termi_main "$@"
+fi
